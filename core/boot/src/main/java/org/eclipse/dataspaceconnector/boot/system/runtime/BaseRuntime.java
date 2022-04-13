@@ -48,8 +48,8 @@ import static org.eclipse.dataspaceconnector.boot.system.ExtensionLoader.loadTel
  *     <li>{@link BaseRuntime#createMonitor()} : instantiates a new {@link Monitor}</li>
  *     <li>{@link BaseRuntime#createContext(TypeManager, Monitor, Telemetry)}: creates a new {@link DefaultServiceExtensionContext} and invokes its {@link DefaultServiceExtensionContext#initialize()} method</li>
  *     <li>{@link BaseRuntime#initializeVault(ServiceExtensionContext)}: initializes the {@link org.eclipse.dataspaceconnector.spi.security.Vault} by
- *          calling {@link ExtensionLoader#loadVault(ServiceExtensionContext)} </li>
- *     <li>{@link BaseRuntime#createExtensions()}: creates a list of {@code ServiceExtension} objects. By default, these are created through {@link ServiceExtensionContext#loadServiceExtensions()}</li>
+ *          calling {@link ExtensionLoader#loadVault(ServiceExtensionContext, ExtensionLoader)} </li>
+ *     <li>{@link BaseRuntime#createExtensions()}: creates a list of {@code ServiceExtension} objects. By default, these are created through {@link ExtensionLoader#loadServiceExtensions()}</li>
  *     <li>{@link BaseRuntime#bootExtensions(ServiceExtensionContext, List)}: initializes the service extensions by putting them through their lifecycle.
  *     By default this calls {@link ExtensionLoader#bootServiceExtensions(List, ServiceExtensionContext)} </li>
  *     <li>{@link BaseRuntime#onError(Exception)}: receives any Exception that was raised during initialization</li>
@@ -57,24 +57,24 @@ import static org.eclipse.dataspaceconnector.boot.system.ExtensionLoader.loadTel
  */
 public class BaseRuntime {
 
+    protected final ServiceLocator serviceLocator;
     private final AtomicReference<HealthCheckResult> startupStatus = new AtomicReference<>(HealthCheckResult.failed("Startup not complete"));
     private final ExtensionLoader extensionLoader;
-    protected final ServiceLocator serviceLocator;
+    private final List<ServiceExtension> serviceExtensions = new ArrayList<>();
     protected Monitor monitor;
-    private List<ServiceExtension> serviceExtensions = new ArrayList<>();
-
-    public static void main(String[] args) {
-        BaseRuntime runtime = new BaseRuntime();
-        runtime.boot();
-    }
 
     public BaseRuntime() {
         this(new ServiceLocatorImpl());
     }
 
     protected BaseRuntime(ServiceLocator serviceLocator) {
-        this.extensionLoader = new ExtensionLoader(serviceLocator);
+        extensionLoader = new ExtensionLoader(serviceLocator);
         this.serviceLocator = serviceLocator;
+    }
+
+    public static void main(String[] args) {
+        BaseRuntime runtime = new BaseRuntime();
+        runtime.boot();
     }
 
     protected Monitor getMonitor() {
@@ -94,33 +94,6 @@ public class BaseRuntime {
      */
     protected void bootWithoutShutdownHook() {
         boot(false);
-    }
-
-    private void boot(boolean addShutdownHook) {
-        ServiceExtensionContext context = createServiceExtensionContext();
-
-        var name = getRuntimeName(context);
-        try {
-            initializeVault(context);
-            List<InjectionContainer<ServiceExtension>> newExtensions = createExtensions();
-            bootExtensions(context, newExtensions);
-
-            newExtensions.stream().map(InjectionContainer::getInjectionTarget).forEach(serviceExtensions::add);
-            if (addShutdownHook) {
-                getRuntime().addShutdownHook(new Thread(() -> shutdown()));
-            }
-
-            var healthCheckService = context.getService(HealthCheckService.class);
-            healthCheckService.addStartupStatusProvider(this::getStartupStatus);
-
-            startupStatus.set(HealthCheckResult.success());
-
-            healthCheckService.refresh();
-        } catch (Exception e) {
-            onError(e);
-        }
-
-        monitor.info(format("%s ready", name));
     }
 
     @NotNull
@@ -165,7 +138,7 @@ public class BaseRuntime {
     /**
      * Starts all service extensions by invoking {@link ExtensionLoader#bootServiceExtensions(List, ServiceExtensionContext)}
      *
-     * @param context The {@code ServiceExtensionContext} that is used in this runtime.
+     * @param context           The {@code ServiceExtensionContext} that is used in this runtime.
      * @param serviceExtensions a list of extensions
      */
     protected void bootExtensions(ServiceExtensionContext context, List<InjectionContainer<ServiceExtension>> serviceExtensions) {
@@ -187,7 +160,7 @@ public class BaseRuntime {
      * this would likely need to be overridden.
      *
      * @param typeManager The TypeManager (for JSON de-/serialization)
-     * @param monitor a Monitor
+     * @param monitor     a Monitor
      * @return a {@code ServiceExtensionContext}
      */
     @NotNull
@@ -217,7 +190,7 @@ public class BaseRuntime {
     /**
      * Hook point to initialize the vault. It can be assumed that a {@link org.eclipse.dataspaceconnector.spi.security.Vault} instance exists prior to this method being called.
      * By default, the {@code Vault} is loaded using the Service Loader mechanism ({@link org.eclipse.dataspaceconnector.spi.system.VaultExtension}) and
-     * a call to {@link ExtensionLoader#loadVault(ServiceExtensionContext)} is made.
+     * a call to {@link ExtensionLoader#loadVault(ServiceExtensionContext, ExtensionLoader)} is made.
      * <p>
      * In order to provide a custom {@code Vault} implementation, please consider using the extension mechanism ({@link org.eclipse.dataspaceconnector.spi.system.VaultExtension}) rather than overriding this method.
      * However, for development/testing scenarios it might be an easy solution to just override this method.
@@ -237,6 +210,33 @@ public class BaseRuntime {
     @NotNull
     protected Monitor createMonitor() {
         return ExtensionLoader.loadMonitor();
+    }
+
+    private void boot(boolean addShutdownHook) {
+        ServiceExtensionContext context = createServiceExtensionContext();
+
+        var name = getRuntimeName(context);
+        try {
+            initializeVault(context);
+            List<InjectionContainer<ServiceExtension>> newExtensions = createExtensions();
+            bootExtensions(context, newExtensions);
+
+            newExtensions.stream().map(InjectionContainer::getInjectionTarget).forEach(serviceExtensions::add);
+            if (addShutdownHook) {
+                getRuntime().addShutdownHook(new Thread(() -> shutdown()));
+            }
+
+            var healthCheckService = context.getService(HealthCheckService.class);
+            healthCheckService.addStartupStatusProvider(this::getStartupStatus);
+
+            startupStatus.set(HealthCheckResult.success());
+
+            healthCheckService.refresh();
+        } catch (Exception e) {
+            onError(e);
+        }
+
+        monitor.info(format("%s ready", name));
     }
 
     /**
