@@ -264,6 +264,7 @@ allprojects {
 }
 
 signing{
+    #testing
     sign(configurations.archives.get())
 }
 openApiMerger {
