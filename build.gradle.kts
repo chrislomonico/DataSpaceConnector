@@ -182,6 +182,10 @@ allprojects {
 
     }
 
+    signing{
+        sign(configurations.archives.get())
+    }
+
     pluginManager.withPlugin("io.swagger.core.v3.swagger-gradle-plugin") {
 
         dependencies {
@@ -263,9 +267,7 @@ allprojects {
     }
 }
 
-signing{
-    sign(configurations.archives.get())
-}
+
 openApiMerger {
     val yamlDirectory = file("${rootProject.projectDir.path}/resources/openapi/yaml")
 
