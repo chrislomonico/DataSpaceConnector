@@ -175,9 +175,9 @@ allprojects {
 
             }
 
-            signing {
-                sign(publishing.publications)
-            }
+//            signing {
+//                sign(publishing.publications)
+//            }
         }
 
     }
@@ -261,6 +261,10 @@ allprojects {
             }
         }
     }
+}
+
+signing{
+    sign(configurations.archives.get())
 }
 openApiMerger {
     val yamlDirectory = file("${rootProject.projectDir.path}/resources/openapi/yaml")
